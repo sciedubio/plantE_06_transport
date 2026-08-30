@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#10b981">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>양분 수송 타이쿤: 설탕 배달 작전</title>
+    
+    <script crossorigin src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.24.7/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --safe-top: env(safe-area-inset-top, 0px);
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+            --vh: 1vh;
+        }
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #f0fdf4;
+            color: #166534;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .h-screen-safe {
+            height: 100dvh;
+            height: calc(var(--vh, 1vh) * 100);
+        }
+        .scrollable-panel {
+            overflow-y: auto;
+            touch-action: pan-y;
+            -webkit-overflow-scrolling: touch; 
+        }
+        canvas {
+            touch-action: none;
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-8px); }
+        }
+        .float-anim { animation: float 3s ease-in-out infinite; }
+        .btn-press:active { transform: scale(0.96); }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-presets="react">
+        const { useState, useEffect, useRef } = React;
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbziXUfeT1sp36dO0S2W8UyU5Iwg2xa6rtdizVNF16XJpqOHt-2e9-lsK-KMGBrveaFo/exec"; 
+
+        // 중2 과학 교과 완벽 반영 (콩 = 단백질)
+        const QUIZ_POOL = [
+            { q: "광합성으로 처음 만들어지는 양분은 무엇일까요?", options: ["포도당", "단백질", "녹말", "설탕"], a: 0, explain: "처음 만들어지는 것은 포도당입니다. 물에 잘 녹아 곧 녹말로 바뀌어요." },
+            { q: "포도당이 잎에서 녹말로 바뀌는 까닭은?", options: ["더 달아지기 위해서", "무게를 줄이려고", "물에 잘 녹지 않아 저장하기 좋아서", "빛을 잘 흡수하려고"], a: 2, explain: "포도당은 물에 녹아 삼투압을 높이므로, 안정한 형태인 녹말로 바꿔 엽록체에 저장합니다." },
+            { q: "양분이 이동할 때의 형태와 통로가 바르게 짝지어진 것은?", options: ["녹말 - 체관", "포도당 - 물관", "설탕 - 체관", "설탕 - 물관"], a: 2, explain: "잎에서 만들어진 양분은 물에 잘 녹는 '설탕'으로 바뀌어 '체관'을 통해 이동합니다." },
+            { q: "감자와 고구마가 양분을 저장하는 기관을 바르게 짝지은 것은?", options: ["감자 - 뿌리, 고구마 - 줄기", "감자 - 줄기, 고구마 - 뿌리", "둘 다 줄기", "둘 다 뿌리"], a: 1, explain: "감자는 땅속 줄기, 고구마는 뿌리에 양분을 저장합니다." },
+            { q: "양분의 쓰임으로 알맞지 않은 것은?", options: ["빛에너지를 만드는 데 쓰인다", "몸을 이루는 구성 물질이 된다", "남은 것은 저장된다", "호흡으로 에너지를 얻는 데 쓰인다"], a: 0, explain: "식물은 빛에너지를 만들지 않고 흡수합니다. 양분은 호흡·구성 물질·저장에 쓰여요." },
+            { q: "저장될 때의 양분 형태를 바르게 짝지은 것은?", options: ["둘 다 녹말", "콩 - 지방, 땅콩 - 녹말", "콩 - 단백질, 땅콩 - 지방", "둘 다 포도당"], a: 2, explain: "저장 형태는 식물마다 다릅니다. 콩은 단백질, 땅콩·참깨는 지방, 감자·쌀은 녹말이 많아요." }
+        ];
+
+        // 식물 마켓 (2단계 퍼즐용)
+        const PLANT_DB = [
+            { id: 'potato', name: '감자', organ: '줄기', form: '녹말', icon: '🥔' },
+            { id: 'sweetpotato', name: '고구마', organ: '뿌리', form: '녹말', icon: '🍠' },
+            { id: 'carrot', name: '당근', organ: '뿌리', form: '녹말', icon: '🥕' },
+            { id: 'grape', name: '포도', organ: '열매', form: '포도당', icon: '🍇' },
+            { id: 'watermelon', name: '수박', organ: '열매', form: '포도당', icon: '🍉' },
+            { id: 'sugarcane', name: '사탕수수', organ: '줄기', form: '설탕', icon: '🎋' },
+            { id: 'peanut', name: '땅콩', organ: '씨', form: '지방', icon: '🥜' },
+            { id: 'sesame', name: '깨', organ: '씨', form: '지방', icon: '🫘' },
+            { id: 'soybean', name: '콩', organ: '씨', form: '단백질', icon: '🫛' }
+        ];
+
+        function App() {
+            const [view, setView] = useState('intro');
+            const [isAdminOpen, setIsAdminOpen] = useState(false);
+            const [customAlert, setCustomAlert] = useState({ show: false, message: '' });
+
+            // Simulation States
+            const [simStage, setSimStage] = useState(1); 
+            const [minValue, setMinValue] = useState(0); // Max Osmosis
+            const [maxValue, setMaxValue] = useState(10); // Apple Brix
+
+            // Report States
+            const [studentId, setStudentId] = useState('');
+            const [studentName, setStudentName] = useState('');
+            const [insight, setInsight] = useState('');
+            const [quizList, setQuizList] = useState([]);
+            const [userAnswers, setUserAnswers] = useState({});
+            const [isQuizChecked, setIsQuizChecked] = useState(false);
+            const [quizScore, setQuizScore] = useState(0);
+
+            // History Navigation
+            const navigate = (nextView) => {
+                setView(nextView);
+                history.pushState({ view: nextView }, '');
+            };
+
+            useEffect(() => {
+                const setVH = () => document.documentElement.style.setProperty('--vh', (window.innerHeight * 0.01) + 'px');
+                window.addEventListener('resize', setVH);
+                setVH();
+
+                history.replaceState({ view: 'intro' }, '');
+                const onPop = (e) => {
+                    const v = e.state?.view;
+                    const allowed = ['intro', 'simulation', 'report', 'done'];
+                    setView(allowed.includes(v) ? v : 'intro');
+                };
+                window.addEventListener('popstate', onPop);
+                setQuizList(QUIZ_POOL);
+
+                return () => {
+                    window.removeEventListener('resize', setVH);
+                    window.removeEventListener('popstate', onPop);
+                };
+            }, []);
+
+            const showAlert = (message) => setCustomAlert({ show: true, message });
+
+            const resetSimulation = () => {
+                setSimStage(1);
+                setMinValue(0);
+                setMaxValue(10);
+                setUserAnswers({});
+                setIsQuizChecked(false);
+                setInsight('');
+            };
+
+            const submitData = () => {
+                if (!studentId.trim() || !studentName.trim() || !insight.trim()) {
+                    return showAlert("학번, 이름, 알게 된 점을 모두 입력해주세요!");
+                }
+                if (Object.keys(userAnswers).length < 6) {
+                    return showAlert("모든 퀴즈 문항(6문제)에 답변해주세요!");
+                }
+                if (!isQuizChecked) {
+                    return showAlert("먼저 '정답 확인' 버튼을 눌러 채점을 진행해주세요!");
+                }
+
+                const payload = { timestamp: new Date().toLocaleString(), studentId, studentName, minValue, maxValue, quizScore, insight };
+
+                if (!GOOGLE_SCRIPT_URL.trim()) {
+                    navigate('done');
+                    return;
+                }
+
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+                fetch(GOOGLE_SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                    signal: controller.signal
+                })
+                .then(() => { clearTimeout(timeoutId); navigate('done'); })
+                .catch(() => { clearTimeout(timeoutId); navigate('done'); });
+            };
+
+            const renderIntro = () => (
+                <div className="flex-1 flex flex-col p-6 items-center justify-center relative scrollable-panel w-full max-w-lg mx-auto min-h-[100dvh]">
+                    <button onClick={() => setIsAdminOpen(true)} className="absolute top-[max(16px,var(--safe-top))] right-4 bg-white/80 px-3 py-1.5 rounded-full text-xs font-bold text-gray-700 shadow border border-emerald-200 btn-press z-20">
+                        ⚙️ DB 가이드
+                    </button>
+                    
+                    <div className="w-32 h-32 mb-8 relative mt-auto">
+                        <div className="absolute inset-0 bg-emerald-400 rounded-full blur-xl opacity-30 animate-pulse"></div>
+                        <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-2xl z-10 relative float-anim">
+                            <path d="M 50 10 Q 90 30 90 70 Q 50 100 10 70 Q 10 30 50 10" fill="#4ade80" stroke="#166534" strokeWidth="3" />
+                            <path d="M 50 10 L 50 90 M 30 45 L 50 55 M 70 45 L 50 55 M 30 75 L 50 65 M 70 75 L 50 65" stroke="#166534" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                            <circle cx="50" cy="50" r="8" fill="#f59e0b" />
+                        </svg>
+                    </div>
+                    
+                    <h1 className="text-3xl font-black text-center mb-2 text-emerald-900 leading-tight">양분 수송 타이쿤<br/><span className="text-xl text-emerald-600">설탕 배달 작전</span></h1>
+                    <p className="text-gray-600 text-center mb-10 text-sm leading-relaxed px-4">
+                        광합성으로 만든 양분을 식물 곳곳으로 안전하게 배달하세요!<br/>세포막 삼투압부터 과수원 솎아주기까지의 3단계 미션이 기다립니다.
+                    </p>
+                    
+                    <button onClick={() => { resetSimulation(); navigate('simulation'); }} className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black text-lg shadow-[0_10px_20px_rgba(16,185,129,0.3)] btn-press shrink-0">
+                        실험 시작하기 🚀
+                    </button>
+                    
+                    <div className="mt-auto pt-10 pb-[max(16px,var(--safe-bottom))] text-gray-400 text-xs font-bold text-center w-full">
+                        Created by Yang DH
+                    </div>
+                </div>
+            );
+
+            const renderReport = () => (
+                <div className="flex-1 flex flex-col p-4 sm:p-6 scrollable-panel w-full max-w-2xl mx-auto min-h-[100dvh]">
+                    <div className="flex justify-between items-center mb-6 pt-[max(16px,var(--safe-top))] shrink-0">
+                        <button onClick={() => navigate('simulation')} className="text-sm font-bold text-emerald-700 bg-emerald-100 px-3 py-1.5 rounded-xl btn-press border border-emerald-200 shadow-sm">
+                            ← 시뮬레이션
+                        </button>
+                        <h2 className="text-xl font-black text-emerald-900">📋 실험 보고서</h2>
+                    </div>
+
+                    <div className="bg-white rounded-2xl p-5 shadow-sm border border-emerald-100 mb-6 space-y-4 shrink-0">
+                        <h3 className="font-bold text-emerald-800 border-b pb-2">1. 실험 데이터 요약</h3>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div className="bg-rose-50 p-3 rounded-xl border border-rose-100">
+                                <span className="text-gray-600 block text-[11px]">기록된 최고 삼투압</span>
+                                <strong className="text-rose-600 text-lg">{minValue}%</strong>
+                            </div>
+                            <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-100">
+                                <span className="text-gray-600 block text-[11px]">최종 사과 당도</span>
+                                <strong className="text-emerald-700 text-lg">{maxValue} Brix</strong>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3 pt-2">
+                            <div className="flex gap-2">
+                                <input type="text" placeholder="학번" value={studentId} onChange={e=>setStudentId(e.target.value)} className="w-1/2 p-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-emerald-500" />
+                                <input type="text" placeholder="이름" value={studentName} onChange={e=>setStudentName(e.target.value)} className="w-1/2 p-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-emerald-500" />
+                            </div>
+                            <textarea placeholder="오늘 실험을 통해 알게 된 점을 적어주세요." value={insight} onChange={e=>setInsight(e.target.value)} className="w-full p-3 rounded-xl border border-gray-200 text-sm h-24 focus:outline-none focus:border-emerald-500 resize-none"></textarea>
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-2xl p-5 shadow-sm border border-emerald-100 mb-6 space-y-6 shrink-0">
+                        <h3 className="font-bold text-emerald-800 border-b pb-2 flex justify-between items-center">
+                            <span>2. 실력 쑥쑥 퀴즈 (6문항)</span>
+                            {isQuizChecked && <span className="text-blue-600 text-sm">점수: {quizScore}/6</span>}
+                        </h3>
+                        {quizList.map((qObj, idx) => (
+                            <div key={idx} className="space-y-3 bg-gray-50 p-4 rounded-xl border border-gray-100">
+                                <p className="font-bold text-sm text-gray-800 leading-snug">Q{idx+1}. {qObj.q}</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    {qObj.options.map((opt, optIdx) => {
+                                        const isSelected = userAnswers[idx] === optIdx;
+                                        const isCorrectOpt = qObj.a === optIdx;
+                                        let btnClass = "bg-white text-gray-700 border-gray-200 hover:bg-emerald-50";
+                                        if (isSelected && !isQuizChecked) btnClass = "bg-emerald-600 text-white border-emerald-600 shadow-md";
+                                        else if (isQuizChecked) {
+                                            if (isCorrectOpt) btnClass = "bg-green-100 text-green-800 border-green-400 font-bold";
+                                            else if (isSelected && !isCorrectOpt) btnClass = "bg-red-100 text-red-800 border-red-400 line-through opacity-70";
+                                            else btnClass = "bg-white text-gray-400 border-gray-100 opacity-50";
+                                        }
+
+                                        return (
+                                            <button 
+                                                key={optIdx} 
+                                                disabled={isQuizChecked}
+                                                onClick={() => setUserAnswers(prev => ({...prev, [idx]: optIdx}))}
+                                                className={`py-2.5 px-3 rounded-lg text-[13px] transition-all text-left border ${btnClass}`}
+                                            >
+                                                {optIdx + 1}. {opt}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                {isQuizChecked && userAnswers[idx] !== undefined && (
+                                    <div className={`text-xs mt-2 p-3 rounded-lg flex gap-2 items-start ${userAnswers[idx] === qObj.a ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
+                                        <span className="text-base">💡</span>
+                                        <span className="font-medium leading-relaxed">{qObj.explain}</span>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+
+                        {!isQuizChecked ? (
+                            <button onClick={() => {
+                                if(Object.keys(userAnswers).length < 6) return showAlert("모든 문제를 풀어주세요!");
+                                let s = 0;
+                                quizList.forEach((q, i) => { if(userAnswers[i] === q.a) s++; });
+                                setQuizScore(s);
+                                setIsQuizChecked(true);
+                            }} className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold text-sm shadow btn-press mt-4">
+                                정답 확인 및 해설 보기 🔍
+                            </button>
+                        ) : (
+                            <div className="text-center text-sm font-bold text-blue-600 bg-blue-50 py-3 rounded-xl border border-blue-200">
+                                채점이 완료되었습니다. 아래 제출 버튼을 눌러주세요.
+                            </div>
+                        )}
+                    </div>
+
+                    <button onClick={submitData} className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black text-base shadow-[0_10px_20px_rgba(16,185,129,0.3)] btn-press shrink-0">
+                        결과 제출하기 📤
+                    </button>
+
+                    <div className="mt-auto pt-10 pb-[max(16px,var(--safe-bottom))] text-gray-400 text-xs font-bold text-center w-full shrink-0">
+                        Created by Yang DH
+                    </div>
+                </div>
+            );
+
+            const renderDone = () => (
+                <div className="flex-1 flex flex-col p-6 items-center justify-center text-center scrollable-panel w-full max-w-lg mx-auto min-h-[100dvh]">
+                    <div className="w-24 h-24 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-4xl mb-6 shadow-inner float-anim mt-auto">
+                        🎉
+                    </div>
+                    <h2 className="text-2xl font-black text-emerald-900 mb-2">설탕 배달 작전 완수!</h2>
+                    <p className="text-gray-600 text-sm max-w-sm mb-10 leading-relaxed">
+                        광합성 산물의 생성부터 저장, 그리고 솎아주기 원리까지 완벽하게 마스터하셨습니다! 결과가 성공적으로 전송되었습니다.
+                    </p>
+                    <button onClick={() => navigate('intro')} className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black text-base shadow-[0_10px_20px_rgba(16,185,129,0.3)] btn-press">
+                        처음으로 돌아가기 🔄
+                    </button>
+                    <div className="mt-auto pt-12 pb-[max(16px,var(--safe-bottom))] text-gray-400 text-xs font-bold">Created by Yang DH</div>
+                </div>
+            );
+
+            return (
+                <div className="h-screen-safe relative select-none w-full bg-[#f0fdf4] flex flex-col">
+                    {view === 'intro' && renderIntro()}
+                    {view === 'simulation' && <SimulationWorkspace 
+                        simStage={simStage} 
+                        setSimStage={setSimStage} 
+                        setMinValue={setMinValue} 
+                        setMaxValue={setMaxValue}
+                        onFinish={() => navigate('report')}
+                        onBack={() => navigate('intro')}
+                        maxValue={maxValue}
+                        osmosisRecord={minValue}
+                        showAlert={showAlert}
+                    />}
+                    {view === 'report' && renderReport()}
+                    {view === 'done' && renderDone()}
+
+                    {/* Alert Modal */}
+                    {customAlert.show && (
+                        <div className="fixed inset-0 z-[110] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+                            <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl text-center space-y-5 animate-[float_0.3s_ease-out]">
+                                <div className="text-4xl">⚠️</div>
+                                <p className="text-gray-800 font-bold text-sm leading-relaxed">{customAlert.message}</p>
+                                <button onClick={() => setCustomAlert({ show: false, message: '' })} className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold text-sm btn-press">
+                                    확인
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Admin Guide Modal */}
+                    {isAdminOpen && (
+                        <div className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+                            <div className="bg-white rounded-3xl max-w-lg w-full max-h-[90dvh] overflow-y-auto p-6 shadow-2xl space-y-4">
+                                <div className="flex justify-between items-center border-b pb-3">
+                                    <h3 className="text-lg font-black text-emerald-900">⚙️ 교사 가이드 & DB 연동</h3>
+                                    <button onClick={() => setIsAdminOpen(false)} className="text-gray-400 font-bold hover:text-gray-700 text-xl px-2">✕</button>
+                                </div>
+                                <div className="text-xs text-gray-600 space-y-3 leading-relaxed">
+                                    <p><strong>1. 구글 시트 연동 방법:</strong><br/>새 구글 스프레드시트를 생성하고 [확장 프로그램] &gt; [Apps Script]에 아래 코드를 붙여넣은 뒤 배포(웹 앱, 모든 사용자)하여 URL을 추출하세요.</p>
+                                    <textarea readOnly className="w-full bg-gray-900 text-emerald-400 p-3 rounded-xl font-mono text-[10px] h-32 resize-none" value={`function doPost(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(['시간', '학번', '이름', '최고삼투압', '사과당도', '퀴즈점수', '알게된점']);
+    sheet.getRange(1, 1, 1, 7).setFontWeight('bold').setBackground('#4a86e8').setFontColor('#ffffff');
+  }
+  var data = JSON.parse(e.postData.contents);
+  sheet.appendRow([data.timestamp, data.studentId, data.studentName, data.minValue, data.maxValue, data.quizScore, data.insight]);
+  return ContentService.createTextOutput(JSON.stringify({result: 'success'})).setMimeType(ContentService.MimeType.JSON);
+}`} />
+                                    <p><strong>2. 코드 내 URL 연결:</strong><br/>상단 <code>GOOGLE_SCRIPT_URL</code> 상수 변수에 웹 앱 URL을 붙여넣으세요.</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        function SimulationWorkspace({ simStage, setSimStage, setMinValue, setMaxValue, onFinish, onBack, maxValue, showAlert }) {
+            const canvasRef = useRef(null);
+            const [mode, setMode] = useState('day'); 
+            
+            // Stage 1 Physics State (Using Ref for performance loop)
+            const particlesRef = useRef([]);
+            const [osmosisLevel, setOsmosisLevel] = useState(20); 
+            const [stage1Transported, setStage1Transported] = useState(0);
+
+            // Stage 2 Puzzle State
+            const [stage2Sugar, setStage2Sugar] = useState(5); // 시작 설탕 개수
+            const [currentPlantIndex, setCurrentPlantIndex] = useState(0);
+            const [selOrgan, setSelOrgan] = useState('');
+            const [selForm, setSelForm] = useState('');
+            const [matchMessage, setMatchMessage] = useState('');
+
+            // Stage 3 State 
+            const [apples, setApples] = useState([]);
+
+            // Resize and Canvas Setup
+            useEffect(() => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const resize = () => {
+                    const rect = canvas.parentElement.getBoundingClientRect();
+                    canvas.width = rect.width * window.devicePixelRatio;
+                    canvas.height = rect.height * window.devicePixelRatio;
+                    const ctx = canvas.getContext('2d');
+                    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+                };
+                resize();
+                window.addEventListener('resize', resize);
+                return () => window.removeEventListener('resize', resize);
+            }, [simStage]);
+
+            // Stage 3 Apples Init
+            useEffect(() => {
+                if (simStage === 3) {
+                    const initApples = [];
+                    for(let i=0; i<15; i++) {
+                        const angle = Math.random() * Math.PI * 2;
+                        const r = Math.random() * 80; 
+                        initApples.push({
+                            id: i, xOffset: r * Math.cos(angle), yOffset: r * Math.sin(angle), status: 'normal'
+                        });
+                    }
+                    setApples(initApples);
+                    setMaxValue(10);
+                }
+            }, [simStage, setMaxValue]);
+
+            useEffect(() => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                let animationFrameId;
+
+                const drawHex = (x, y, size, color, text = null) => {
+                    ctx.fillStyle = color;
+                    ctx.beginPath();
+                    for(let j=0; j<6; j++) {
+                        const a = j * Math.PI / 3;
+                        ctx[j===0?'moveTo':'lineTo'](x + size * Math.cos(a), y + size * Math.sin(a));
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                    if(text) {
+                        ctx.fillStyle = '#fff';
+                        ctx.font = `bold ${size*0.7}px sans-serif`;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(text, x, y);
+                    }
+                };
+
+                const render = () => {
+                    const width = canvas.width / window.devicePixelRatio;
+                    const height = canvas.height / window.devicePixelRatio;
+                    ctx.clearRect(0, 0, width, height);
+
+                    if (simStage === 1) {
+                        // Background & Chloroplast
+                        ctx.fillStyle = mode === 'day' ? '#ecfdf5' : '#0f172a';
+                        ctx.fillRect(0, 0, width, height);
+                        
+                        ctx.fillStyle = mode === 'day' ? '#a7f3d0' : '#1e293b';
+                        ctx.beginPath();
+                        ctx.ellipse(width/2, height*0.4, width*0.45, height*0.35, 0, 0, Math.PI*2);
+                        ctx.fill();
+
+                        // Membrane with Gaps
+                        const membraneY = height * 0.75;
+                        ctx.strokeStyle = mode === 'day' ? '#059669' : '#38bdf8';
+                        ctx.lineWidth = 4;
+                        ctx.setLineDash([15, 15]); // 큰 틈새
+                        ctx.beginPath();
+                        ctx.moveTo(0, membraneY);
+                        ctx.lineTo(width, membraneY);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+                        
+                        ctx.fillStyle = mode === 'day' ? '#065f46' : '#94a3b8';
+                        ctx.font = 'bold 12px Noto Sans KR';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('🔒 잎의 세포막 (미세 구멍)', width / 2, membraneY + 20);
+                        
+                        if(mode === 'night') {
+                            ctx.fillStyle = '#ec4899';
+                            ctx.fillText('👉 캔버스의 [녹말]을 터치해서 쪼개세요!', width/2, 30);
+                        }
+
+                        // Update & Draw Particles
+                        particlesRef.current.forEach((p, i) => {
+                            if(p.type === 'glucose') {
+                                // 포도당: 통통 튀어다님
+                                p.x += p.vx; p.y += p.vy;
+                                if(p.x < width*0.2 || p.x > width*0.8) p.vx *= -1;
+                                if(p.y < height*0.1 || p.y > membraneY - 10) p.vy *= -1;
+                                drawHex(p.x, p.y, 10, '#f59e0b', '포');
+                            } 
+                            else if(p.type === 'starch') {
+                                // 녹말: 거대한 사슬 구조, 바닥에 무겁게 가라앉음
+                                p.y += (membraneY - 20 - p.y) * 0.1;
+                                const s = 12;
+                                drawHex(p.x, p.y - s, s, '#10b981');
+                                drawHex(p.x - s*0.9, p.y + s*0.5, s, '#10b981');
+                                drawHex(p.x + s*0.9, p.y + s*0.5, s, '#10b981');
+                                drawHex(p.x, p.y + s*2, s, '#10b981');
+                                ctx.fillStyle = '#fff'; ctx.font = 'bold 10px Noto Sans KR';
+                                ctx.fillText('녹말', p.x, p.y + s*0.5);
+                            }
+                            else if(p.type === 'sugar') {
+                                // 설탕: 막을 통과해 아래로 뚝뚝 떨어짐
+                                p.y += p.vy;
+                                ctx.fillStyle = '#fff';
+                                ctx.beginPath();
+                                ctx.arc(p.x, p.y - 5, 6, 0, Math.PI*2);
+                                ctx.arc(p.x, p.y + 5, 6, 0, Math.PI*2);
+                                ctx.fill();
+                                ctx.strokeStyle = '#ec4899'; ctx.lineWidth=2; ctx.stroke();
+                                
+                                // 화면 밖으로 나가면 카운트 증가 후 제거
+                                if(p.y > height + 20) {
+                                    p.dead = true;
+                                    setStage1Transported(prev => prev + 1);
+                                }
+                            }
+                        });
+                        particlesRef.current = particlesRef.current.filter(p => !p.dead);
+
+                    } else if (simStage === 2) {
+                        // Stage 2: Plant Body & Curved Phloem
+                        ctx.fillStyle = '#f8fafc';
+                        ctx.fillRect(0, 0, width, height);
+
+                        // 식물 형상 (잎 -> 줄기 -> 뿌리)
+                        ctx.fillStyle = '#86efac';
+                        ctx.beginPath();
+                        ctx.ellipse(width*0.25, height*0.2, width*0.15, height*0.1, Math.PI/6, 0, Math.PI*2);
+                        ctx.fill();
+                        
+                        ctx.fillStyle = '#d9f99d';
+                        ctx.fillRect(width*0.4, height*0.1, width*0.2, height*0.7);
+                        
+                        ctx.strokeStyle = '#a3e635'; ctx.lineWidth = 10; ctx.lineCap = 'round';
+                        ctx.beginPath();
+                        ctx.moveTo(width*0.5, height*0.8); ctx.lineTo(width*0.3, height*0.95);
+                        ctx.moveTo(width*0.5, height*0.8); ctx.lineTo(width*0.7, height*0.95);
+                        ctx.stroke();
+
+                        // 곡선 분홍색 체관 튜브
+                        ctx.strokeStyle = '#fbcfe8'; ctx.lineWidth = 16;
+                        ctx.beginPath();
+                        ctx.moveTo(width*0.25, height*0.2); 
+                        ctx.quadraticCurveTo(width*0.5, height*0.2, width*0.5, height*0.4); 
+                        ctx.lineTo(width*0.5, height*0.8); 
+                        ctx.stroke();
+
+                        // 설탕(이당류) 파티클이 곡선을 따라 애니메이션
+                        const time = Date.now() / 15;
+                        [0, 60, 120].forEach(delay => {
+                            let prog = (time + delay) % 180; 
+                            let px, py;
+                            if(prog < 60) { // 잎에서 줄기로 커브
+                                const t = prog / 60;
+                                px = width*0.25 + (width*0.25) * t; 
+                                py = height*0.2 + (height*0.2) * (t*t); 
+                            } else { // 줄기 타고 직진
+                                const t = (prog - 60) / 120;
+                                px = width*0.5;
+                                py = height*0.4 + (height*0.4) * t;
+                            }
+                            ctx.fillStyle = '#fff';
+                            ctx.beginPath();
+                            ctx.arc(px, py-4, 5, 0, Math.PI*2);
+                            ctx.arc(px, py+4, 5, 0, Math.PI*2);
+                            ctx.fill();
+                            ctx.strokeStyle = '#ec4899'; ctx.lineWidth=2; ctx.stroke();
+                        });
+                        
+                        ctx.fillStyle = '#be185d'; ctx.font = 'bold 12px Noto Sans KR'; ctx.textAlign = 'left';
+                        ctx.fillText('🌸 체관 고속도로 (설탕 이동)', 10, 20);
+                    }
+
+                    animationFrameId = requestAnimationFrame(render);
+                };
+
+                render();
+                return () => cancelAnimationFrame(animationFrameId);
+            }, [simStage, mode]);
+
+            const handleCanvasClick = (e) => {
+                if (simStage !== 1 || mode !== 'night') return;
+                const canvas = canvasRef.current;
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width / window.devicePixelRatio;
+                const scaleY = canvas.height / rect.height / window.devicePixelRatio;
+                
+                const clickX = (e.clientX - rect.left) * scaleX;
+                const clickY = (e.clientY - rect.top) * scaleY;
+
+                // 녹말 클릭 시 -> 쪼개져서 설탕으로 변신 후 떨어짐
+                particlesRef.current.forEach(p => {
+                    if (p.type === 'starch') {
+                        // 대략적인 충돌 반경 확인
+                        const dist = Math.hypot(p.x - clickX, p.y - clickY);
+                        if (dist < 30) {
+                            p.dead = true; // 녹말 제거
+                            // 2개의 설탕 생성 (아래로 통과)
+                            particlesRef.current.push({ type: 'sugar', x: p.x - 10, y: p.y, vy: 2 + Math.random() });
+                            particlesRef.current.push({ type: 'sugar', x: p.x + 10, y: p.y, vy: 2 + Math.random() });
+                        }
+                    }
+                });
+            };
+
+            const addGlucose = () => {
+                if (mode !== 'day') return;
+                const canvas = canvasRef.current;
+                const w = canvas.width / window.devicePixelRatio;
+                const h = canvas.height / window.devicePixelRatio;
+                
+                particlesRef.current.push({
+                    type: 'glucose',
+                    x: w/2 + (Math.random()-0.5)*50,
+                    y: h*0.3,
+                    vx: (Math.random()-0.5)*4,
+                    vy: (Math.random()-0.5)*4
+                });
+
+                const newLevel = Math.min(100, osmosisLevel + 15);
+                setOsmosisLevel(newLevel); 
+                setMinValue(m => Math.max(m, newLevel)); // 최고 삼투압 기록
+            };
+
+            const bundleStarch = () => {
+                const glucoseCount = particlesRef.current.filter(p => p.type === 'glucose').length;
+                if (glucoseCount >= 4) {
+                    let removed = 0;
+                    particlesRef.current = particlesRef.current.filter(p => {
+                        if (p.type === 'glucose' && removed < 4) { removed++; return false; }
+                        return true;
+                    });
+                    
+                    const canvas = canvasRef.current;
+                    const w = canvas.width / window.devicePixelRatio;
+                    const h = canvas.height / window.devicePixelRatio;
+                    particlesRef.current.push({
+                        type: 'starch',
+                        x: w/2 + (Math.random()-0.5)*100,
+                        y: h*0.3
+                    });
+                    setOsmosisLevel(prev => Math.max(20, prev - 45)); // 삼투압 뚝 떨어짐 (농도 안정화)
+                }
+            };
+
+            const checkMatch = () => {
+                if(!selOrgan || !selForm) return showAlert("기관과 형태를 모두 선택하세요!");
+                const plant = PLANT_DB[currentPlantIndex];
+                
+                if (selOrgan === plant.organ && selForm === plant.form) {
+                    setMatchMessage("정답! 성공적으로 배달했습니다 🎉");
+                    setStage2Sugar(prev => prev - 1);
+                    setTimeout(() => {
+                        setMatchMessage('');
+                        setSelOrgan('');
+                        setSelForm('');
+                        if (currentPlantIndex < PLANT_DB.length - 1) {
+                            setCurrentPlantIndex(prev => prev + 1);
+                        } else {
+                            setMatchMessage("모든 식물 마켓 배달 완료!");
+                        }
+                    }, 1500);
+                } else {
+                    setMatchMessage("앗! 저장 기관이나 형태가 틀렸어요 😢 다시 시도!");
+                    setTimeout(() => setMatchMessage(''), 1500);
+                }
+            };
+
+            return (
+                <div className="flex-1 flex flex-col p-4 sm:p-6 w-full max-w-2xl mx-auto h-full relative">
+                    {/* Header */}
+                    <div className="flex justify-between items-center mb-4 pt-[max(0px,var(--safe-top))] shrink-0">
+                        <button onClick={onBack} className="text-xs font-bold text-emerald-700 bg-emerald-100 px-3 py-1.5 rounded-xl btn-press">
+                            ← 홈
+                        </button>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-black bg-emerald-600 text-white px-3 py-1 rounded-full">
+                                스테이지 {simStage} / 3
+                            </span>
+                            <button onClick={() => {
+                                if(simStage < 3) setSimStage(s => s + 1);
+                                else onFinish();
+                            }} className="text-xs font-bold bg-emerald-800 text-white px-3 py-1.5 rounded-xl btn-press shadow-md">
+                                {simStage === 3 ? '보고서 작성 →' : '다음 단계 ➔'}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Guide Message */}
+                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-emerald-100 mb-4 shrink-0">
+                        <h2 className="font-black text-emerald-900 text-base mb-1">
+                            {simStage === 1 && "🌿 [스테이지 1] 낮과 밤의 양분 변신"}
+                            {simStage === 2 && "🌸 [스테이지 2] 체관 마켓 매칭 퍼즐"}
+                            {simStage === 3 && "🍎 [스테이지 3] 과수원 솎아주기 챌린지"}
+                        </h2>
+                        <p className="text-[11px] text-gray-600 font-medium">
+                            {simStage === 1 && "낮에 포도당이 쌓이면 농도(삼투압)가 치솟습니다. 구멍을 통과하지 못하는 거대한 '녹말'로 합쳐 농도를 낮추세요! 밤에는 녹말을 터치해 '설탕'으로 쪼개면 구멍을 쏙쏙 통과합니다."}
+                            {simStage === 2 && "체관을 타고 내려온 설탕을 각 식물의 마켓에 맞게 배달하세요. [저장 기관]과 [저장 형태]를 정확히 맞추어야 배달이 완료됩니다."}
+                            {simStage === 3 && "나무에 사과가 너무 많으면 양분이 분산되어 맛이 없어집니다. 작은 사과들을 터치(가위질)해 솎아내어 당도(Brix)가 높은 명품 사과를 만드세요!"}
+                        </p>
+                    </div>
+
+                    {/* Canvas Area */}
+                    <div className="bg-white rounded-2xl shadow-inner border border-emerald-100 mb-4 flex-1 flex flex-col relative overflow-hidden min-h-[280px]">
+                        {simStage < 3 ? (
+                            <div className="flex-1 relative w-full h-full cursor-crosshair">
+                                <canvas ref={canvasRef} onClick={handleCanvasClick} className="absolute inset-0 w-full h-full" />
+                                {simStage === 2 && (
+                                    <div className="absolute top-2 right-2 bg-white/90 p-2 rounded-xl text-xs font-bold border border-pink-200 shadow">
+                                        보유 설탕: <span className="text-pink-600">{stage2Sugar}개</span>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            /* Stage 3 Apple Tree */
+                            <div className="flex-1 bg-gradient-to-b from-sky-100 to-emerald-50 relative flex flex-col items-center justify-end pb-8 overflow-hidden">
+                                <div className="w-16 h-32 bg-amber-800 rounded-t-sm z-10"></div>
+                                <div className="absolute top-10 w-[200px] h-[200px] bg-emerald-500 rounded-full opacity-95 shadow-xl z-0"></div>
+                                
+                                <div className="absolute top-3 left-3 bg-white/90 px-3 py-2 rounded-xl text-xs font-bold shadow border border-gray-200 z-20">
+                                    남은 사과: <span className="text-rose-600 font-black">{apples.filter(a=>a.status==='normal').length}개</span><br/>
+                                    예상 당도: <span className="text-emerald-600 font-black">{maxValue} Brix</span>
+                                </div>
+
+                                {apples.map(apple => {
+                                    if(apple.status !== 'normal') return null;
+                                    const count = apples.filter(a=>a.status==='normal').length;
+                                    const scale = 0.8 + (15 - count) * 0.15; 
+                                    return (
+                                        <button 
+                                            key={apple.id}
+                                            onClick={() => {
+                                                setApples(prev => prev.map(a => a.id === apple.id ? {...a, status: 'pruned'} : a));
+                                                setMaxValue(prev => Math.min(40, prev + 2)); 
+                                            }}
+                                            style={{ 
+                                                left: `calc(50% + ${apple.xOffset}px)`, 
+                                                top: `calc(110px + ${apple.yOffset}px)`,
+                                                transform: `translate(-50%, -50%) scale(${Math.min(1.5, scale)})`,
+                                                transition: 'all 0.3s'
+                                            }}
+                                            className="absolute w-8 h-8 bg-rose-500 rounded-full shadow-md flex items-center justify-center text-white text-[10px] btn-press border border-rose-700 z-20 cursor-pointer"
+                                        >
+                                            ✂️
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        {/* Stage 1 Osmosis Gauge */}
+                        {simStage === 1 && (
+                            <div className="p-3 bg-gray-50 border-t border-gray-200 flex items-center gap-3 text-xs shrink-0 z-10 w-full">
+                                <span className="font-bold text-gray-700 whitespace-nowrap">엽록체 농도(삼투압):</span>
+                                <div className="flex-1 bg-gray-200 rounded-full h-3 overflow-hidden shadow-inner relative">
+                                    <div 
+                                        className={`h-full transition-all duration-300 ${osmosisLevel > 70 ? 'bg-rose-500' : (osmosisLevel > 40 ? 'bg-amber-400' : 'bg-emerald-500')}`} 
+                                        style={{ width: `${osmosisLevel}%` }}
+                                    ></div>
+                                    {osmosisLevel > 80 && <div className="absolute inset-0 bg-red-500/50 animate-pulse"></div>}
+                                </div>
+                                <span className={`font-black w-10 text-right ${osmosisLevel > 70 ? 'text-rose-600' : 'text-emerald-700'}`}>{osmosisLevel}%</span>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Bottom Controls */}
+                    <div className="bg-white rounded-2xl p-4 shadow-sm border border-emerald-100 shrink-0 mb-[max(16px,var(--safe-bottom))]">
+                        {simStage === 1 && (
+                            <div className="space-y-3">
+                                <div className="flex gap-2">
+                                    <button onClick={() => setMode(m => m === 'day' ? 'night' : 'day')} className={`flex-1 py-3 rounded-xl font-bold text-sm shadow border transition-colors btn-press ${mode === 'day' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-indigo-900 text-indigo-100 border-indigo-900'}`}>
+                                        {mode === 'day' ? '☀️ 낮 (광합성 모드)' : '🌙 밤 (수송 모드)'}
+                                    </button>
+                                    {mode === 'day' && (
+                                        <button onClick={addGlucose} className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-bold text-sm shadow btn-press">
+                                            포도당 합성 (+1)
+                                        </button>
+                                    )}
+                                </div>
+                                {mode === 'day' && (
+                                    <button onClick={bundleStarch} className="w-full bg-teal-700 text-white py-3 rounded-xl font-bold text-[13px] shadow btn-press flex items-center justify-center gap-2">
+                                        <span>포도당 4개 ➡️</span> <strong>'거대 녹말'로 뭉쳐 저장</strong>
+                                    </button>
+                                )}
+                                {mode === 'night' && (
+                                    <div className="text-center text-xs font-bold text-pink-600 bg-pink-50 py-3 rounded-xl border border-pink-200">
+                                        위를 보세요! 캔버스 화면의 '녹말'을 직접 터치해 쪼개주세요!
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {simStage === 2 && (
+                            <div className="space-y-3">
+                                <div className="text-center">
+                                    <span className="text-2xl">{PLANT_DB[currentPlantIndex].icon}</span>
+                                    <h3 className="font-black text-emerald-900">{PLANT_DB[currentPlantIndex].name} 마켓</h3>
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-3 text-xs">
+                                    <div>
+                                        <p className="font-bold text-gray-600 mb-1">📍 저장 기관</p>
+                                        <select value={selOrgan} onChange={e=>setSelOrgan(e.target.value)} className="w-full p-2 border border-emerald-200 rounded-lg bg-emerald-50 font-bold focus:outline-none">
+                                            <option value="">선택하세요</option>
+                                            {['뿌리', '줄기', '열매', '씨'].map(o => <option key={o} value={o}>{o}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <p className="font-bold text-gray-600 mb-1">📦 저장 형태</p>
+                                        <select value={selForm} onChange={e=>setSelForm(e.target.value)} className="w-full p-2 border border-emerald-200 rounded-lg bg-emerald-50 font-bold focus:outline-none">
+                                            <option value="">선택하세요</option>
+                                            {['녹말', '포도당', '설탕', '단백질', '지방'].map(f => <option key={f} value={f}>{f}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {matchMessage && (
+                                    <div className={`text-center text-xs font-bold py-2 rounded-lg ${matchMessage.includes('정답') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                        {matchMessage}
+                                    </div>
+                                )}
+
+                                <button onClick={checkMatch} disabled={stage2Sugar <= 0} className="w-full bg-pink-600 text-white py-3 rounded-xl font-bold text-sm shadow btn-press disabled:opacity-50 disabled:bg-gray-400">
+                                    {stage2Sugar > 0 ? '이 조건으로 배달하기 🚚' : '보유 설탕 부족!'}
+                                </button>
+                            </div>
+                        )}
+
+                        {simStage === 3 && (
+                            <div className="text-center space-y-3 py-2">
+                                <p className="text-[13px] font-bold text-gray-700">작은 사과들을 터치해 가위질로 솎아내세요!</p>
+                                <button onClick={() => {
+                                    const initApples = [];
+                                    for(let i=0; i<15; i++) {
+                                        const angle = Math.random() * Math.PI * 2;
+                                        const r = Math.random() * 80;
+                                        initApples.push({ id: i, xOffset: r * Math.cos(angle), yOffset: r * Math.sin(angle), status: 'normal' });
+                                    }
+                                    setApples(initApples);
+                                    setMaxValue(10);
+                                }} className="bg-gray-100 text-gray-700 px-5 py-2.5 rounded-xl text-xs font-bold border border-gray-200 btn-press">
+                                    과수원 초기화 ↺
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
